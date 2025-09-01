@@ -1,6 +1,10 @@
-function emailAutomation() {
+function emailAutomationV2() {
   var count = GmailApp.getInboxUnreadCount();
-  const thread = GmailApp.getInboxThreads(0,count+7);
+  if ( count === 0){ // Gaurd clause, === strict compaire as js auto corrects type
+    return;
+  }
+  Logger.log(`unread : ${count}`)
+  const thread = GmailApp.getInboxThreads(0,count);
   const messages = GmailApp.getMessagesForThreads(thread);
 
   var autofolderIterator = DriveApp.getFoldersByName('test_inputs');
@@ -8,10 +12,10 @@ function emailAutomation() {
   // Logger.log("autofolder found")
 
   for (let i = 0; i < messages.length; i++) {
-    for (let j = Math.max(0,messages[i].length-3); j < messages[i].length; j++) {
+    for (let j = Math.max(0,messages[i].length-2); j < messages[i].length; j++) {
       var sender = messages[i][j].getFrom();
-
-     if ( sender == "pe@ideametrics.co.in"){
+      Logger.log(sender)
+     if ( sender == "Project Engineering <pe@ideametrics.co.in>"){
       Logger.log(`email skipped from ${sender}`)
       continue;
      }
@@ -23,13 +27,14 @@ function emailAutomation() {
       var content = refine_content(content0)
       var date = messages[i][j].getDate();
       var fdate = Utilities.formatDate(date,Session.getScriptTimeZone(), "dd/MMM/yy@HH-MM")
-      var folderDate = Utilities.formatDate(date,Session.getScriptTimeZone(),"dd/MMM/yy")
+      var folderDate = Utilities.formatDate(date,Session.getScriptTimeZone(),"MMM/dd/yy")
       var fname = "Email_"+ fdate + ".html"
 
       var dateFolder = getOrcreateDateFolder(folderDate,autofolder);
-      var projectFolder = getOrcreateProjectFolder(projectName,dateFolder)
+      var projectFolder0 = getOrcreateProjectFolder(projectName,dateFolder)
+      var projectFolder = getOrcreateDateFolder(folderDate,projectFolder0)
   
-      var folder_iterator = dateFolder.getFilesByName(fname);
+      var folder_iterator = projectFolder.getFilesByName(fname);
 
       if(folder_iterator.hasNext()){
        Logger.log("file already exists")
@@ -55,6 +60,8 @@ function emailAutomation() {
 
         } else { Logger.log("No attachment")}
 
+        dc_doc(projectFolder,fdate,attachment);
+
       }
    }
   } 
@@ -74,21 +81,43 @@ function getOrcreateDateFolder(folderDate,auto_inputs){
 function getOrcreateProjectFolder(projectName,dateFolder){
 
   var folder = dateFolder.getFoldersByName(projectName)
-
+  
   if(folder.hasNext()){
     Logger.log( projectName + "Folder already exist : ")
     return folder.next()
   } else {
      Logger.log(projectName + "New folder created")
-     return dateFolder.createFolder(projectName);
+     return dateFolder.createFolder(projectName)
   } 
 }
 function refine_content(content) {
   content = content.replace(/From:.*|To:.*|Sent:.*|Subject:.*/gi, ""); // Remove "From:", "To:", "Sent:", "Subject:" lines
   content = content.replace(/[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}/g, ""); // Remove email addresses (e.g., john.doe@example.com)
-  content = content.replace(/On .* wrote:/gi, ""); // Remove quoted email history (e.g., "On Monday, John wrote:")
+  content = content.replace(/On .* at .* wrote:/gi, ""); // Remove quoted email history (e.g., "On Monday, John wrote:")
   
   var signatureRegex = /(Thanks[\s\S]*|Best[\s\S]*|Regards[\s\S]*|Warm Regards[\s\S]*|Kind Regards[\s\S]*|Sincerely[\s\S]*|Cheers[\s\S]*|Sent from my[\s\S]*)/i;
   content = content.replace(signatureRegex, "").trim();
   return content.trim();
+}
+function dc_doc(dateFolder,fdate,attachment){
+  //create csv file
+  var csv_name = fdate+".csv";
+  var csvIterator = dateFolder.getFilesByName(csv_name);
+  var content = "Sr.,Doc name,Doc Type,Modeler Review,FEA Review\n"; 
+
+
+  if(!csvIterator.hasNext()){
+    for(let i=0;i < attachment.length; i++){
+      var docnametype = attachment[i].getName();
+      var docnamestr = docnametype.split(/\./);
+      var docname = docnamestr[0];
+      var doctype = docnamestr[1];
+      var sr = i+1;
+
+      content += `${sr},${docname},${doctype},,\n`;
+    }
+
+    dateFolder.createFile(csv_name,content,MimeType.CSV);
+  }
+
 }
